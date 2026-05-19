@@ -89,6 +89,24 @@ function ApplyPage() {
         .single();
       if (docErr || !doc) throw new Error(docErr?.message ?? "TOR record failed");
 
+      // 2b. Upload supporting documents (job description + certificates)
+      const supportingUploads: { file: File; type: "job_description" | "certificate" }[] = [];
+      if (jobDescFile) supportingUploads.push({ file: jobDescFile, type: "job_description" });
+      for (const c of certFiles) supportingUploads.push({ file: c, type: "certificate" });
+      for (const item of supportingUploads) {
+        const sext = item.file.name.split(".").pop()?.toLowerCase() ?? "pdf";
+        const spath = `${user.id}/${app.id}/${item.type}-${crypto.randomUUID()}.${sext}`;
+        const { error: sUpErr } = await supabase.storage.from("supporting-documents").upload(spath, item.file, { upsert: false });
+        if (sUpErr) throw new Error(sUpErr.message);
+        const { error: sDbErr } = await supabase.from("supporting_documents").insert({
+          application_id: app.id,
+          doc_type: item.type,
+          file_path: spath,
+          original_name: item.file.name,
+        });
+        if (sDbErr) throw new Error(sDbErr.message);
+      }
+
       // 3. OCR
       setStep("ocr");
       toast.info("Extracting subjects from your TOR…");
