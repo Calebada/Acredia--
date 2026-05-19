@@ -30,6 +30,8 @@ function ApplyPage() {
   const [priorProgram, setPriorProgram] = useState("");
   const [years, setYears] = useState(0);
   const [file, setFile] = useState<File | null>(null);
+  const [jobDescFile, setJobDescFile] = useState<File | null>(null);
+  const [certFiles, setCertFiles] = useState<File[]>([]);
   const [step, setStep] = useState<"form" | "uploading" | "ocr" | "matching" | "predicting">("form");
   const [appId, setAppId] = useState<string | null>(null);
 
@@ -86,6 +88,24 @@ function ApplyPage() {
         .select("id")
         .single();
       if (docErr || !doc) throw new Error(docErr?.message ?? "TOR record failed");
+
+      // 2b. Upload supporting documents (job description + certificates)
+      const supportingUploads: { file: File; type: "job_description" | "certificate" }[] = [];
+      if (jobDescFile) supportingUploads.push({ file: jobDescFile, type: "job_description" });
+      for (const c of certFiles) supportingUploads.push({ file: c, type: "certificate" });
+      for (const item of supportingUploads) {
+        const sext = item.file.name.split(".").pop()?.toLowerCase() ?? "pdf";
+        const spath = `${user.id}/${app.id}/${item.type}-${crypto.randomUUID()}.${sext}`;
+        const { error: sUpErr } = await supabase.storage.from("supporting-documents").upload(spath, item.file, { upsert: false });
+        if (sUpErr) throw new Error(sUpErr.message);
+        const { error: sDbErr } = await supabase.from("supporting_documents").insert({
+          application_id: app.id,
+          doc_type: item.type,
+          file_path: spath,
+          original_name: item.file.name,
+        });
+        if (sDbErr) throw new Error(sDbErr.message);
+      }
 
       // 3. OCR
       setStep("ocr");
@@ -159,6 +179,48 @@ function ApplyPage() {
                   onChange={(e) => setFile(e.target.files?.[0] ?? null)}
                 />
               </Label>
+            </div>
+
+            <div className="rounded-lg border-2 border-dashed border-border bg-accent/20 p-6">
+              <Label className="flex cursor-pointer flex-col items-center gap-2 text-center">
+                <Upload className="h-6 w-6 text-primary" />
+                <span className="font-medium text-primary-deep">
+                  {jobDescFile ? jobDescFile.name : "Upload Job Description (optional)"}
+                </span>
+                <span className="text-xs text-muted-foreground">Current or prior role — PDF, JPG, or PNG</span>
+                <input
+                  type="file"
+                  accept="application/pdf,image/jpeg,image/png"
+                  className="hidden"
+                  disabled={busy}
+                  onChange={(e) => setJobDescFile(e.target.files?.[0] ?? null)}
+                />
+              </Label>
+            </div>
+
+            <div className="rounded-lg border-2 border-dashed border-border bg-accent/20 p-6">
+              <Label className="flex cursor-pointer flex-col items-center gap-2 text-center">
+                <Upload className="h-6 w-6 text-primary" />
+                <span className="font-medium text-primary-deep">
+                  {certFiles.length > 0
+                    ? `${certFiles.length} certificate${certFiles.length > 1 ? "s" : ""} selected`
+                    : "Upload Certificates (optional)"}
+                </span>
+                <span className="text-xs text-muted-foreground">Trainings, seminars, awards — select multiple</span>
+                <input
+                  type="file"
+                  accept="application/pdf,image/jpeg,image/png"
+                  multiple
+                  className="hidden"
+                  disabled={busy}
+                  onChange={(e) => setCertFiles(Array.from(e.target.files ?? []))}
+                />
+              </Label>
+              {certFiles.length > 0 && (
+                <ul className="mt-3 space-y-1 text-xs text-muted-foreground">
+                  {certFiles.map((f, i) => <li key={i}>• {f.name}</li>)}
+                </ul>
+              )}
             </div>
 
             <Button type="submit" size="lg" disabled={busy || !file} className="w-full bg-primary text-primary-foreground hover:bg-primary-deep">
