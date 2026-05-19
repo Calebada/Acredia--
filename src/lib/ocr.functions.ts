@@ -5,9 +5,10 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { callLovableAIJson } from "./ai.server";
 
 const OCR_PROMPT = `You are an OCR extractor for a college Transcript of Records (TOR).
-Extract every subject/course listed. For each one return: code (e.g. "IT111"), title, grade (string like "1.5", "A", "85"), units (number).
-If a value is missing, use null. Ignore headers, totals, GPA rows. Return STRICT JSON with this shape and nothing else:
-{"subjects":[{"code":"...","title":"...","grade":"...","units":3}, ...]}`;
+First, assess legibility. If the scan is blurry, dark, cropped, or otherwise too poor to read reliably, set "quality" to "low" and explain in "quality_reason" (e.g. "image is blurred", "text not readable", "page is cropped"). Otherwise set "quality" to "ok".
+Then extract every subject/course listed. For each return: code (e.g. "IT111"), title, grade (string like "1.5", "A", "85"), units (number). If a value is missing, use null. Ignore headers, totals, GPA rows.
+Return STRICT JSON only:
+{"quality":"ok|low","quality_reason":"...","subjects":[{"code":"...","title":"...","grade":"...","units":3}]}`;
 
 export const runOcrOnTor = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -35,7 +36,11 @@ export const runOcrOnTor = createServerFn({ method: "POST" })
     const mime = file.type || (doc.file_path.endsWith(".pdf") ? "application/pdf" : "image/jpeg");
     const dataUrl = `data:${mime};base64,${b64}`;
 
-    const result = await callLovableAIJson<{ subjects: { code: string | null; title: string | null; grade: string | null; units: number | null }[] }>({
+    const result = await callLovableAIJson<{
+      quality?: "ok" | "low";
+      quality_reason?: string;
+      subjects: { code: string | null; title: string | null; grade: string | null; units: number | null }[];
+    }>({
       model: "google/gemini-2.5-flash",
       messages: [
         {
@@ -47,6 +52,16 @@ export const runOcrOnTor = createServerFn({ method: "POST" })
         },
       ],
     });
+
+    if (result.quality === "low") {
+      await supabaseAdmin
+        .from("tor_documents")
+        .update({ ocr_status: "low_quality", ocr_raw: JSON.stringify(result) })
+        .eq("id", doc.id);
+      throw new Error(
+        `Your transcript scan looks unclear (${result.quality_reason ?? "low quality"}). Please re-upload a sharper, well-lit copy.`,
+      );
+    }
 
     const subjects = (result.subjects ?? []).filter((s) => s.code || s.title);
     if (subjects.length === 0) {
