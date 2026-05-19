@@ -5,9 +5,10 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { callLovableAIJson } from "./ai.server";
 
 const OCR_PROMPT = `You are an OCR extractor for a college Transcript of Records (TOR).
-Extract every subject/course listed. For each one return: code (e.g. "IT111"), title, grade (string like "1.5", "A", "85"), units (number).
-If a value is missing, use null. Ignore headers, totals, GPA rows. Return STRICT JSON with this shape and nothing else:
-{"subjects":[{"code":"...","title":"...","grade":"...","units":3}, ...]}`;
+First, assess legibility. If the scan is blurry, dark, cropped, or otherwise too poor to read reliably, set "quality" to "low" and explain in "quality_reason" (e.g. "image is blurred", "text not readable", "page is cropped"). Otherwise set "quality" to "ok".
+Then extract every subject/course listed. For each return: code (e.g. "IT111"), title, grade (string like "1.5", "A", "85"), units (number). If a value is missing, use null. Ignore headers, totals, GPA rows.
+Return STRICT JSON only:
+{"quality":"ok|low","quality_reason":"...","subjects":[{"code":"...","title":"...","grade":"...","units":3}]}`;
 
 export const runOcrOnTor = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
