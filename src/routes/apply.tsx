@@ -381,12 +381,6 @@ function ApplyPage() {
               onChange={(fl) => setBirthCert(fl?.[0] ?? null)}
             />
             <Uploader
-              label="Birth Certificate (PSA-authenticated)"
-              hint="Scanned PSA copy"
-              file={birthCert}
-              onChange={(fl) => setBirthCert(fl?.[0] ?? null)}
-            />
-            <Uploader
               label="Job Description"
               hint="We'll use this to suggest the best CIT-U program for you"
               file={jobDesc}
