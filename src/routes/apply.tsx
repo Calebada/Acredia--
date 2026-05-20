@@ -362,6 +362,8 @@ function ApplyPage() {
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
+                  </div>
+                ))}
               </div>
               <div>
                 <Label htmlFor="workdesc">Briefly describe your work</Label>
@@ -375,7 +377,6 @@ function ApplyPage() {
                 <p className="mt-1 text-xs text-muted-foreground">
                   Our AI uses this — together with your work list — to recommend the best CIT-U program for you.
                 </p>
-                ))}
               </div>
               <Button type="submit" size="lg" className="w-full bg-primary text-primary-foreground hover:bg-primary-deep">
                 Continue to documents
