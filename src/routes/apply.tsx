@@ -234,9 +234,8 @@ function ApplyPage() {
       if (docErr || !doc) throw new Error(docErr?.message ?? "TOR record failed");
 
       // supporting docs
-      const supporting: { file: File; type: "job_description" | "certificate" | "transfer_credential" | "birth_certificate" | "employment_cert" }[] = [];
+      const supporting: { file: File; type: "job_description" | "certificate" | "birth_certificate" | "employment_cert" }[] = [];
       if (jobDesc) supporting.push({ file: jobDesc, type: "job_description" });
-      if (transferCred) supporting.push({ file: transferCred, type: "transfer_credential" });
       if (birthCert) supporting.push({ file: birthCert, type: "birth_certificate" });
       for (const f of employmentCerts) supporting.push({ file: f, type: "employment_cert" });
       for (const f of otherCerts) supporting.push({ file: f, type: "certificate" });
