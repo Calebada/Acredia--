@@ -157,35 +157,50 @@ function ApplyPage() {
     setStep("documents");
   }
 
-  /** Upload JD only to get program suggestions before final submission. */
-  async function analyzeJD() {
-    if (!jobDesc || !user) return;
+  /** Build a free-text summary of the applicant's background for the AI. */
+  function buildWorkText(): string {
+    const lines = workExp
+      .filter((w) => w.role.trim() || w.years > 0)
+      .map((w) => `- ${w.role || "Role"} (${w.years || 0} year${w.years === 1 ? "" : "s"})`);
+    const parts: string[] = [];
+    if (lines.length) parts.push(`Work history:\n${lines.join("\n")}`);
+    if (workDescription.trim()) parts.push(`Description:\n${workDescription.trim()}`);
+    return parts.join("\n\n");
+  }
+
+  /** Run AI suggestions using JD file (if uploaded) and/or work text. */
+  async function runSuggestions() {
+    if (!user) return;
     setSuggesting(true);
     setStep("suggest");
+    setSuggestions(null);
     try {
-      const ext = jobDesc.name.split(".").pop()?.toLowerCase() ?? "pdf";
-      const tmpPath = `${user.id}/_jd-preview/${crypto.randomUUID()}.${ext}`;
-      const { error: upErr } = await supabase.storage
-        .from("supporting-documents")
-        .upload(tmpPath, jobDesc, { upsert: true });
-      if (upErr) throw new Error(upErr.message);
+      let filePath: string | undefined;
+      if (jobDesc) {
+        const ext = jobDesc.name.split(".").pop()?.toLowerCase() ?? "pdf";
+        filePath = `${user.id}/_jd-preview/${crypto.randomUUID()}.${ext}`;
+        const { error: upErr } = await supabase.storage
+          .from("supporting-documents")
+          .upload(filePath, jobDesc, { upsert: true });
+        if (upErr) throw new Error(upErr.message);
+      }
 
-      const res = await suggestFn({ data: { filePath: tmpPath } });
+      const workText = buildWorkText();
+      if (!filePath && !workText) {
+        setSuggestions([]);
+        return;
+      }
+
+      const res = await suggestFn({ data: { filePath, workText: workText || undefined } });
       setSuggestions(res.suggestions as Suggestion[]);
       setIndustryLabel(res.industry ?? null);
       if (res.suggestions[0]) setProgramId(res.suggestions[0].id);
-      toast.success("AI found program matches based on your job description");
+      toast.success("AI found program matches for your background");
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "JD analysis failed");
-      setStep("documents");
+      toast.error(err instanceof Error ? err.message : "AI suggestion failed");
     } finally {
       setSuggesting(false);
     }
-  }
-
-  function skipSuggestions() {
-    setSuggestions([]);
-    setStep("suggest");
   }
 
   /* ---------------- Final submission ---------------- */
