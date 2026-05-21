@@ -24,6 +24,7 @@ interface MatchRow {
   evaluator_note: string | null;
   flagged_by_applicant: boolean;
   applicant_flag_note: string | null;
+  source: string | null;
   tor_subject: { code: string | null; title: string | null; grade: string | null; units: number | null } | null;
   curriculum_subject: { code: string; title: string; units: number } | null;
 }
