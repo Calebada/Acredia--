@@ -493,43 +493,18 @@ function ApplyPage() {
           </Card>
         )}
 
-        {step === "processing" && (
+        {step === "submitting" && (
           <Card className="mt-8 p-10">
             <div className="flex flex-col items-center text-center">
-              <div className="relative mb-6">
-                <div className="absolute inset-0 animate-ping rounded-full bg-primary/20" />
-                <div className="relative flex h-20 w-20 items-center justify-center rounded-full bg-maroon-gradient">
-                  <ScanLine className="h-10 w-10 text-gold" />
-                </div>
-              </div>
-              <h2 className="font-display text-2xl text-primary-deep">AI is analyzing your transcript</h2>
-              <p className="mt-2 text-muted-foreground">This usually takes 20–40 seconds.</p>
-
-              <div className="mt-8 w-full max-w-md space-y-3 text-left">
-                <PhaseRow active={phase === "uploading"} done={phase !== null && phase !== "uploading"} label="Uploading documents to secure storage" />
-                <PhaseRow active={phase === "ocr"} done={phase === "matching" || phase === "predicting"} label="Reading TOR with Gemini Vision (OCR + quality check)" />
-                <PhaseRow active={phase === "matching"} done={phase === "predicting"} label="Matching against CIT-U curriculum" />
-                <PhaseRow active={phase === "predicting"} done={false} label="Forecasting completion plan" />
-              </div>
+              <Loader2 className="h-12 w-12 animate-spin text-primary" />
+              <h2 className="mt-4 font-display text-2xl text-primary-deep">Submitting your application…</h2>
+              <p className="mt-2 text-muted-foreground">
+                Uploading your documents securely. The Department Chair will perform the AI evaluation.
+              </p>
             </div>
           </Card>
         )}
       </main>
-    </div>
-  );
-}
-
-function PhaseRow({ active, done, label }: { active: boolean; done: boolean; label: string }) {
-  return (
-    <div className="flex items-center gap-3 rounded-md border border-border bg-accent/20 p-3 text-sm">
-      {done ? (
-        <CheckCircle2 className="h-4 w-4 text-primary" />
-      ) : active ? (
-        <Loader2 className="h-4 w-4 animate-spin text-primary" />
-      ) : (
-        <div className="h-4 w-4 rounded-full border border-muted-foreground/40" />
-      )}
-      <span className={done || active ? "text-primary-deep" : "text-muted-foreground"}>{label}</span>
     </div>
   );
 }
