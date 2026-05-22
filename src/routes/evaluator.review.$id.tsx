@@ -27,7 +27,12 @@ function Review() {
   const [matches, setMatches] = useState<any[]>([]);
   const [curriculum, setCurriculum] = useState<any[]>([]);
   const [torUrl, setTorUrl] = useState<string | null>(null);
+  const [torDocId, setTorDocId] = useState<string | null>(null);
+  const [supportingDocs, setSupportingDocs] = useState<{ id: string; doc_type: string; original_name: string | null; url: string }[]>([]);
   const [remarks, setRemarks] = useState("");
+  const [running, setRunning] = useState<null | "ocr" | "matching" | "predicting">(null);
+  const ocrFn = useServerFn(runOcrOnTor);
+  const matchFn = useServerFn(runMatching);
   const predictFn = useServerFn(runPrediction);
 
   useEffect(() => {
