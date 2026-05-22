@@ -128,13 +128,54 @@ function Review() {
             <h1 className="font-display text-3xl text-primary-deep">{app.full_name}</h1>
             <p className="text-sm text-muted-foreground">{app.programs?.code} — {app.programs?.name} · status {app.status}</p>
           </div>
-          <Button onClick={finalize} className="bg-primary text-primary-foreground hover:bg-primary-deep">Finalize application</Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              onClick={runEvaluation}
+              disabled={running !== null || !torDocId}
+              variant="outline"
+              className="border-primary text-primary hover:bg-primary/5"
+            >
+              {running ? (
+                <><Loader2 className="mr-1 h-4 w-4 animate-spin" /> {running === "ocr" ? "Reading TOR…" : running === "matching" ? "Matching curriculum…" : "Forecasting…"}</>
+              ) : (
+                <><Sparkles className="mr-1 h-4 w-4" /> {matches.length ? "Re-run AI evaluation" : "Run AI evaluation"}</>
+              )}
+            </Button>
+            <Button onClick={finalize} className="bg-primary text-primary-foreground hover:bg-primary-deep">Finalize application</Button>
+          </div>
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-2">
-          <Card className="overflow-hidden">
-            <div className="border-b border-border bg-accent/30 px-4 py-2 font-display text-lg text-primary-deep">TOR document</div>
-            {torUrl ? (
+        {supportingDocs.length > 0 && (
+          <Card className="mb-6 p-5">
+            <p className="mb-3 font-display text-lg text-primary-deep">Supporting documents</p>
+            <ul className="grid gap-2 sm:grid-cols-2">
+              {supportingDocs.map((d) => (
+                <li key={d.id}>
+                  <a
+                    href={d.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center gap-2 rounded-md border border-border bg-accent/20 px-3 py-2 text-sm hover:border-primary"
+                  >
+                    <FileText className="h-4 w-4 text-primary" />
+                    <span className="flex-1 truncate">{d.original_name ?? d.doc_type}</span>
+                    <Badge variant="outline" className="text-[10px] capitalize">{d.doc_type.replace("_", " ")}</Badge>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        )}
+
+        {matches.length === 0 && (
+          <Card className="mb-6 border-dashed p-6 text-center">
+            <Sparkles className="mx-auto h-8 w-8 text-primary" />
+            <p className="mt-2 font-display text-lg text-primary-deep">AI evaluation not yet run</p>
+            <p className="text-sm text-muted-foreground">
+              Click <span className="font-medium">Run AI evaluation</span> above to perform TOR OCR, curriculum matching, and work-experience accreditation.
+            </p>
+          </Card>
+        )}
               torUrl.match(/\.pdf/i) ? (
                 <iframe src={torUrl} className="h-[700px] w-full" />
               ) : (
