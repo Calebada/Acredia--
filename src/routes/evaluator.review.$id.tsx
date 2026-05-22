@@ -9,7 +9,10 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
+import { runOcrOnTor } from "@/lib/ocr.functions";
+import { runMatching } from "@/lib/matching.functions";
 import { runPrediction } from "@/lib/prediction.functions";
+import { Loader2, Sparkles, FileText } from "lucide-react";
 
 export const Route = createFileRoute("/evaluator/review/$id")({
   head: () => ({ meta: [{ title: "Review application — ACREDIA" }] }),
