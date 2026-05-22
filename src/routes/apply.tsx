@@ -12,18 +12,15 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
-import { runOcrOnTor } from "@/lib/ocr.functions";
-import { runMatching } from "@/lib/matching.functions";
-import { runPrediction } from "@/lib/prediction.functions";
 import { suggestProgramsFromJD } from "@/lib/programs.functions";
-import { Upload, Loader2, FileText, ScanLine, GraduationCap, Sparkles, CheckCircle2, Plus, Trash2 } from "lucide-react";
+import { Upload, Loader2, FileText, GraduationCap, Sparkles, CheckCircle2, Plus, Trash2 } from "lucide-react";
 
 export const Route = createFileRoute("/apply")({
   head: () => ({ meta: [{ title: "New application — ACREDIA" }] }),
   component: ApplyPage,
 });
 
-type Step = "info" | "documents" | "suggest" | "processing" | "done";
+type Step = "info" | "documents" | "suggest" | "submitting";
 
 type Suggestion = { id: string; code: string; name: string; reason: string; score: number };
 
@@ -112,18 +109,6 @@ function ApplyPage() {
   const [suggestions, setSuggestions] = useState<Suggestion[] | null>(null);
   const [industryLabel, setIndustryLabel] = useState<string | null>(null);
 
-  // processing
-  const [phase, setPhase] = useState<
-    | "uploading"
-    | "ocr"
-    | "matching"
-    | "predicting"
-    | null
-  >(null);
-
-  const ocrFn = useServerFn(runOcrOnTor);
-  const matchFn = useServerFn(runMatching);
-  const predictFn = useServerFn(runPrediction);
   const suggestFn = useServerFn(suggestProgramsFromJD);
 
   useEffect(() => {
@@ -210,8 +195,7 @@ function ApplyPage() {
       toast.error("Transcript of Records is required");
       return;
     }
-    setStep("processing");
-    setPhase("uploading");
+    setStep("submitting");
 
     try {
       const cleanedExp = workExp.filter((w) => w.role.trim() || w.years > 0);
@@ -227,7 +211,7 @@ function ApplyPage() {
           program_id: programId,
           full_name: fullName,
           prior_school: null,
-          prior_program: priorProgramText || null,
+          prior_program: [priorProgramText, workDescription.trim()].filter(Boolean).join(" || ") || null,
           years_experience: totalYears,
           status: "submitted",
         })
@@ -243,12 +227,10 @@ function ApplyPage() {
         .upload(path, tor, { upsert: true });
       if (upErr) throw new Error(upErr.message);
 
-      const { data: doc, error: docErr } = await supabase
+      const { error: docErr } = await supabase
         .from("tor_documents")
-        .insert({ application_id: app.id, file_path: path, ocr_status: "pending" })
-        .select("id")
-        .single();
-      if (docErr || !doc) throw new Error(docErr?.message ?? "TOR record failed");
+        .insert({ application_id: app.id, file_path: path, ocr_status: "pending" });
+      if (docErr) throw new Error(docErr.message);
 
       // supporting docs
       const supporting: { file: File; type: "job_description" | "certificate" | "birth_certificate" | "employment_cert" }[] = [];
@@ -272,26 +254,16 @@ function ApplyPage() {
         });
       }
 
-      setPhase("ocr");
-      await ocrFn({ data: { applicationId: app.id, torDocumentId: doc.id } });
-
-      setPhase("matching");
-      await matchFn({ data: { applicationId: app.id, workText: buildWorkText() || undefined } });
-
-      setPhase("predicting");
-      await predictFn({ data: { applicationId: app.id } });
-
-      toast.success("Evaluation ready!");
-      navigate({ to: "/applicant/evaluation/$id", params: { id: app.id } });
+      toast.success("Application submitted! The Department Chair will review your documents.");
+      navigate({ to: "/dashboard" });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Submission failed");
       setStep("suggest");
-      setPhase(null);
     }
   }
 
-  const stepIndex = { info: 0, documents: 1, suggest: 2, processing: 3, done: 3 }[step];
-  const progress = ((stepIndex + 1) / 4) * 100;
+  const stepIndex = { info: 0, documents: 1, suggest: 2, submitting: 2 }[step];
+  const progress = ((stepIndex + 1) / 3) * 100;
 
   return (
     <div className="min-h-screen bg-background">
@@ -308,7 +280,7 @@ function ApplyPage() {
             <span className={step === "info" ? "font-semibold text-primary" : ""}>1. Personal info</span>
             <span className={step === "documents" ? "font-semibold text-primary" : ""}>2. Upload documents</span>
             <span className={step === "suggest" ? "font-semibold text-primary" : ""}>3. Pick program</span>
-            <span className={step === "processing" ? "font-semibold text-primary" : ""}>4. AI evaluation</span>
+            <span className={step === "submitting" ? "font-semibold text-primary" : ""}>Submit</span>
           </div>
         </div>
 
@@ -515,49 +487,24 @@ function ApplyPage() {
                 onClick={submitAll}
                 disabled={!programId || !tor}
               >
-                Submit & start AI evaluation
+                Submit application
               </Button>
             </div>
           </Card>
         )}
 
-        {step === "processing" && (
+        {step === "submitting" && (
           <Card className="mt-8 p-10">
             <div className="flex flex-col items-center text-center">
-              <div className="relative mb-6">
-                <div className="absolute inset-0 animate-ping rounded-full bg-primary/20" />
-                <div className="relative flex h-20 w-20 items-center justify-center rounded-full bg-maroon-gradient">
-                  <ScanLine className="h-10 w-10 text-gold" />
-                </div>
-              </div>
-              <h2 className="font-display text-2xl text-primary-deep">AI is analyzing your transcript</h2>
-              <p className="mt-2 text-muted-foreground">This usually takes 20–40 seconds.</p>
-
-              <div className="mt-8 w-full max-w-md space-y-3 text-left">
-                <PhaseRow active={phase === "uploading"} done={phase !== null && phase !== "uploading"} label="Uploading documents to secure storage" />
-                <PhaseRow active={phase === "ocr"} done={phase === "matching" || phase === "predicting"} label="Reading TOR with Gemini Vision (OCR + quality check)" />
-                <PhaseRow active={phase === "matching"} done={phase === "predicting"} label="Matching against CIT-U curriculum" />
-                <PhaseRow active={phase === "predicting"} done={false} label="Forecasting completion plan" />
-              </div>
+              <Loader2 className="h-12 w-12 animate-spin text-primary" />
+              <h2 className="mt-4 font-display text-2xl text-primary-deep">Submitting your application…</h2>
+              <p className="mt-2 text-muted-foreground">
+                Uploading your documents securely. The Department Chair will perform the AI evaluation.
+              </p>
             </div>
           </Card>
         )}
       </main>
-    </div>
-  );
-}
-
-function PhaseRow({ active, done, label }: { active: boolean; done: boolean; label: string }) {
-  return (
-    <div className="flex items-center gap-3 rounded-md border border-border bg-accent/20 p-3 text-sm">
-      {done ? (
-        <CheckCircle2 className="h-4 w-4 text-primary" />
-      ) : active ? (
-        <Loader2 className="h-4 w-4 animate-spin text-primary" />
-      ) : (
-        <div className="h-4 w-4 rounded-full border border-muted-foreground/40" />
-      )}
-      <span className={done || active ? "text-primary-deep" : "text-muted-foreground"}>{label}</span>
     </div>
   );
 }

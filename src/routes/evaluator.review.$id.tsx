@@ -9,7 +9,10 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
+import { runOcrOnTor } from "@/lib/ocr.functions";
+import { runMatching } from "@/lib/matching.functions";
 import { runPrediction } from "@/lib/prediction.functions";
+import { Loader2, Sparkles, FileText } from "lucide-react";
 
 export const Route = createFileRoute("/evaluator/review/$id")({
   head: () => ({ meta: [{ title: "Review application — ACREDIA" }] }),
@@ -24,7 +27,12 @@ function Review() {
   const [matches, setMatches] = useState<any[]>([]);
   const [curriculum, setCurriculum] = useState<any[]>([]);
   const [torUrl, setTorUrl] = useState<string | null>(null);
+  const [torDocId, setTorDocId] = useState<string | null>(null);
+  const [supportingDocs, setSupportingDocs] = useState<{ id: string; doc_type: string; original_name: string | null; url: string }[]>([]);
   const [remarks, setRemarks] = useState("");
+  const [running, setRunning] = useState<null | "ocr" | "matching" | "predicting">(null);
+  const ocrFn = useServerFn(runOcrOnTor);
+  const matchFn = useServerFn(runMatching);
   const predictFn = useServerFn(runPrediction);
 
   useEffect(() => {
@@ -45,10 +53,28 @@ function Review() {
       const { data: c } = await supabase.from("curriculum_subjects").select("id, code, title, units").eq("program_id", appData.program_id).order("code");
       setCurriculum(c ?? []);
     }
-    const { data: doc } = await supabase.from("tor_documents").select("file_path").eq("application_id", id).maybeSingle();
+    const { data: doc } = await supabase.from("tor_documents").select("id, file_path").eq("application_id", id).maybeSingle();
     if (doc) {
+      setTorDocId(doc.id);
       const { data: signed } = await supabase.storage.from("tor-documents").createSignedUrl(doc.file_path, 600);
       setTorUrl(signed?.signedUrl ?? null);
+    } else {
+      setTorDocId(null);
+      setTorUrl(null);
+    }
+
+    const { data: sup } = await supabase
+      .from("supporting_documents")
+      .select("id, doc_type, original_name, file_path")
+      .eq("application_id", id);
+    if (sup) {
+      const enriched = await Promise.all(
+        sup.map(async (s) => {
+          const { data: signed } = await supabase.storage.from("supporting-documents").createSignedUrl(s.file_path, 600);
+          return { id: s.id, doc_type: s.doc_type, original_name: s.original_name, url: signed?.signedUrl ?? "" };
+        }),
+      );
+      setSupportingDocs(enriched);
     }
   }, [id]);
 
@@ -73,6 +99,24 @@ function Review() {
     navigate({ to: "/evaluator/queue" });
   }
 
+  async function runEvaluation() {
+    if (!torDocId) { toast.error("No TOR document uploaded"); return; }
+    try {
+      setRunning("ocr");
+      await ocrFn({ data: { applicationId: id, torDocumentId: torDocId } });
+      setRunning("matching");
+      await matchFn({ data: { applicationId: id, workText: app?.prior_program ?? undefined } });
+      setRunning("predicting");
+      await predictFn({ data: { applicationId: id } });
+      toast.success("AI evaluation complete");
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "AI evaluation failed");
+    } finally {
+      setRunning(null);
+    }
+  }
+
   if (!app) return <div className="flex min-h-screen items-center justify-center text-muted-foreground">Loading…</div>;
 
   return (
@@ -84,8 +128,54 @@ function Review() {
             <h1 className="font-display text-3xl text-primary-deep">{app.full_name}</h1>
             <p className="text-sm text-muted-foreground">{app.programs?.code} — {app.programs?.name} · status {app.status}</p>
           </div>
-          <Button onClick={finalize} className="bg-primary text-primary-foreground hover:bg-primary-deep">Finalize application</Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              onClick={runEvaluation}
+              disabled={running !== null || !torDocId}
+              variant="outline"
+              className="border-primary text-primary hover:bg-primary/5"
+            >
+              {running ? (
+                <><Loader2 className="mr-1 h-4 w-4 animate-spin" /> {running === "ocr" ? "Reading TOR…" : running === "matching" ? "Matching curriculum…" : "Forecasting…"}</>
+              ) : (
+                <><Sparkles className="mr-1 h-4 w-4" /> {matches.length ? "Re-run AI evaluation" : "Run AI evaluation"}</>
+              )}
+            </Button>
+            <Button onClick={finalize} className="bg-primary text-primary-foreground hover:bg-primary-deep">Finalize application</Button>
+          </div>
         </div>
+
+        {supportingDocs.length > 0 && (
+          <Card className="mb-6 p-5">
+            <p className="mb-3 font-display text-lg text-primary-deep">Supporting documents</p>
+            <ul className="grid gap-2 sm:grid-cols-2">
+              {supportingDocs.map((d) => (
+                <li key={d.id}>
+                  <a
+                    href={d.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center gap-2 rounded-md border border-border bg-accent/20 px-3 py-2 text-sm hover:border-primary"
+                  >
+                    <FileText className="h-4 w-4 text-primary" />
+                    <span className="flex-1 truncate">{d.original_name ?? d.doc_type}</span>
+                    <Badge variant="outline" className="text-[10px] capitalize">{d.doc_type.replace("_", " ")}</Badge>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        )}
+
+        {matches.length === 0 && (
+          <Card className="mb-6 border-dashed p-6 text-center">
+            <Sparkles className="mx-auto h-8 w-8 text-primary" />
+            <p className="mt-2 font-display text-lg text-primary-deep">AI evaluation not yet run</p>
+            <p className="text-sm text-muted-foreground">
+              Click <span className="font-medium">Run AI evaluation</span> above to perform TOR OCR, curriculum matching, and work-experience accreditation.
+            </p>
+          </Card>
+        )}
 
         <div className="grid gap-6 lg:grid-cols-2">
           <Card className="overflow-hidden">
