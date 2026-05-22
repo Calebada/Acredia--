@@ -195,8 +195,7 @@ function ApplyPage() {
       toast.error("Transcript of Records is required");
       return;
     }
-    setStep("processing");
-    setPhase("uploading");
+    setStep("submitting");
 
     try {
       const cleanedExp = workExp.filter((w) => w.role.trim() || w.years > 0);
@@ -212,7 +211,7 @@ function ApplyPage() {
           program_id: programId,
           full_name: fullName,
           prior_school: null,
-          prior_program: priorProgramText || null,
+          prior_program: [priorProgramText, workDescription.trim()].filter(Boolean).join(" || ") || null,
           years_experience: totalYears,
           status: "submitted",
         })
@@ -228,12 +227,10 @@ function ApplyPage() {
         .upload(path, tor, { upsert: true });
       if (upErr) throw new Error(upErr.message);
 
-      const { data: doc, error: docErr } = await supabase
+      const { error: docErr } = await supabase
         .from("tor_documents")
-        .insert({ application_id: app.id, file_path: path, ocr_status: "pending" })
-        .select("id")
-        .single();
-      if (docErr || !doc) throw new Error(docErr?.message ?? "TOR record failed");
+        .insert({ application_id: app.id, file_path: path, ocr_status: "pending" });
+      if (docErr) throw new Error(docErr.message);
 
       // supporting docs
       const supporting: { file: File; type: "job_description" | "certificate" | "birth_certificate" | "employment_cert" }[] = [];
@@ -257,26 +254,16 @@ function ApplyPage() {
         });
       }
 
-      setPhase("ocr");
-      await ocrFn({ data: { applicationId: app.id, torDocumentId: doc.id } });
-
-      setPhase("matching");
-      await matchFn({ data: { applicationId: app.id, workText: buildWorkText() || undefined } });
-
-      setPhase("predicting");
-      await predictFn({ data: { applicationId: app.id } });
-
-      toast.success("Evaluation ready!");
-      navigate({ to: "/applicant/evaluation/$id", params: { id: app.id } });
+      toast.success("Application submitted! The Department Chair will review your documents.");
+      navigate({ to: "/dashboard" });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Submission failed");
       setStep("suggest");
-      setPhase(null);
     }
   }
 
-  const stepIndex = { info: 0, documents: 1, suggest: 2, processing: 3, done: 3 }[step];
-  const progress = ((stepIndex + 1) / 4) * 100;
+  const stepIndex = { info: 0, documents: 1, suggest: 2, submitting: 2 }[step];
+  const progress = ((stepIndex + 1) / 3) * 100;
 
   return (
     <div className="min-h-screen bg-background">
